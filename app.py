@@ -43,21 +43,17 @@ st.info(f"""
 # --- CONFIGURACIÓN DE NOMBRES DE CAJEROS CON MEMORIA ---
 st.subheader("👥 Asignación de Turno")
 
-# Inicializar memoria para los nombres si no existe
 if "nombres_cajeros" not in st.session_state:
     st.session_state.nombres_cajeros = "Mary Millán, Yosfrank Gamero, Doralys Cumaná, Yorlin Henríquez"
 
-# Caja de texto conectada a la memoria
 cajeros_input = st.text_area(
     "Nombres de cajeros disponibles (separa cada nombre con una coma):",
     value=st.session_state.nombres_cajeros,
     help="Puedes escribir o agregar nuevos nombres aquí."
 )
 
-# Guardar cambios en la memoria automáticamente
 st.session_state.nombres_cajeros = cajeros_input
 
-# Convertir el texto ingresado en una lista limpia
 cajeros_lista = [c.strip() for c in cajeros_input.split(",") if c.strip()]
 
 cajeros_activos = st.multiselect(
@@ -104,7 +100,7 @@ if uploaded_file and api_key:
                 Responde ÚNICAMENTE con el objeto JSON sin formato adicional.
                 """
                 response = client.models.generate_content(
-                    model='gemini-2.0-flash',
+                    model='gemini-3.8-flash',
                     contents=[image, prompt]
                 )
                 
@@ -132,7 +128,7 @@ if uploaded_file and api_key:
                 st.subheader("💡 Diagnóstico y Recomendaciones para la Farmacia")
                 
                 if upt_real < target_upt:
-                    st.warning(f"⚠️ **UPT Bajo ({upt_real:.2f} vs {target_upt} meta):** El cajero está vendiendo pocas unidades por cliente. Se sugiere incentivar la venta cruzada en caja (ej. suero oral al vender analgésicos, protectores gástricos o artículos de cuidado personal).")
+                    st.warning(f"⚠️ **UPT Bajo ({upt_real:.2f} vs {target_upt} meta):** El cajero está vendiendo pocas unidades por cliente. Se sugiere incentivar la venta cruzada en caja.")
                 else:
                     st.success("✅ **Excelente UPT:** Buen nivel de venta sugerida en mostrador.")
                     
