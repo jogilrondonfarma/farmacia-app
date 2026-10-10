@@ -96,9 +96,9 @@ if submitted:
                 ]
                 """
                 
-                # Usando el identificador universal estable gemini-flash-latest
+                # Configuración exacta con el modelo estándar actual de la SDK de Google GenAI
                 response = client.models.generate_content(
-                    model='gemini-flash-latest',
+                    model='gemini-2.5-flash',
                     contents=[image, prompt]
                 )
                 
