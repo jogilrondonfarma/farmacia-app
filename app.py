@@ -60,7 +60,6 @@ st.markdown("---")
 st.subheader("🌙 Cierre de Jornada: Análisis por IA")
 st.markdown("Ingresa tu clave, sube la foto del reporte y presiona el botón para procesar.")
 
-# Usamos un formulario para evitar que la página se recargue sola al interactuar
 with st.form("form_cierre"):
     api_key = st.text_input("Ingresa tu Gemini API Key:", type="password")
     uploaded_file = st.file_uploader("Sube la imagen del reporte general (tabla de usuarios)", type=["jpg", "jpeg", "png", "webp", "heic"])
@@ -77,7 +76,7 @@ if submitted:
         image = Image.open(uploaded_file)
         st.image(image, caption="Reporte de Cierre Nocturno", use_column_width=True)
         
-        with st.spinner("Procesando la tabla de cierre de la farmacia con Gemini..."):
+        with st.spinner("Procesando la tabla de cierre con Gemini..."):
             try:
                 client = genai.Client(api_key=api_key)
                 
@@ -97,8 +96,9 @@ if submitted:
                 ]
                 """
                 
+                # Usando modelo estable gemini-2.0-flash
                 response = client.models.generate_content(
-                    model='gemini-3.8-flash',
+                    model='gemini-2.0-flash',
                     contents=[image, prompt]
                 )
                 
