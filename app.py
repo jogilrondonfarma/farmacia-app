@@ -67,8 +67,9 @@ if uploaded_file and api_key:
                 
                 Responde ÚNICAMENTE con una lista JSON válida (ejemplo: [{"cajero": "NOMBRE", "ventas_usd": 0.0, "unidades": 0, "trafico": 0}]) sin texto adicional ni formato markdown extra.
                 """
+                # Usando el modelo actualizado gemini-3.8-flash
                 response = client.models.generate_content(
-                    model='gemini-2.0-flash',
+                    model='gemini-3.8-flash',
                     contents=[image, prompt]
                 )
                 
