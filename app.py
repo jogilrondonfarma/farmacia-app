@@ -40,13 +40,24 @@ st.info(f"""
 * **Unidades Requeridas:** {int(meta_hoy_unidades)} unidades
 """)
 
-# --- SELECCIÓN DE CAJEROS ACTIVOS ---
+# --- CONFIGURACIÓN DE NOMBRES DE CAJEROS ---
 st.subheader("👥 Asignación de Turno")
-cajeros_lista = ["Cajero 1", "Cajero 2", "Cajero 3", "Cajero 4"]
+
+# Aquí puedes editar los nombres por defecto o agregar más separados por comas
+nombres_por_defecto = "Mary Millán, Yosfrank Gamero, Doralys Cumaná, Yorlin Henríquez"
+cajeros_input = st.text_area(
+    "Nombres de cajeros disponibles (separa cada nobre con una coma):",
+    value=nombres_por_defecto,
+    help="Puedes escribir o agregar nuevos nombres aquí."
+)
+
+# Convertir el texto ingresado en una lista limpia
+cajeros_lista = [c.strip() for c in cajeros_input.split(",") if c.strip()]
+
 cajeros_activos = st.multiselect(
     "Selecciona los cajeros que están de turno hoy:",
     options=cajeros_lista,
-    default=["Cajero 1", "Cajero 2"]
+    default=cajeros_lista[:2] if len(cajeros_lista) >= 2 else cajeros_lista
 )
 
 if cajeros_activos:
@@ -80,7 +91,7 @@ if uploaded_file and api_key:
                 client = genai.Client(api_key=api_key)
                 prompt = """
                 Analiza esta imagen de reporte de cierre de ventas de farmacia y extrae los datos en formato JSON estricto con las siguientes llaves:
-                - cajero: (nombre del cajero si aparece, o 'Desconocido')
+                - cajero: (nombre del cajero si aparece en el reporte, o 'Desconocido')
                 - ventas_usd: (monto total en dólares como número)
                 - unidades: (total de unidades vendidas como número)
                 - trafico: (cantidad total de transacciones/clientes/tickets como número)
@@ -91,14 +102,12 @@ if uploaded_file and api_key:
                     contents=[image, prompt]
                 )
                 
-                # Limpiar la respuesta para obtener JSON
                 raw_text = response.text.strip()
                 if raw_text.startswith("```json"):
                     raw_text = raw_text.replace("```json", "").replace("```", "").strip()
                 
                 datos = json.loads(raw_text)
                 
-                # Cálculos reales
                 ventas_real = float(datos.get("ventas_usd", 0))
                 unidades_real = float(datos.get("unidades", 0))
                 trafico_real = float(datos.get("trafico", 1))
@@ -106,7 +115,6 @@ if uploaded_file and api_key:
                 upt_real = unidades_real / trafico_real if trafico_real > 0 else 0
                 ticket_real = ventas_real / trafico_real if trafico_real > 0 else 0
                 
-                # Mostrar Resultados
                 st.subheader(f"📈 Resultados Obtenidos: {datos.get('cajero', 'Cajero')}")
                 
                 col1, col2, col3, col4 = st.columns(4)
@@ -115,7 +123,6 @@ if uploaded_file and api_key:
                 col3.metric("Unidad Promedio (UPT)", f"{upt_real:.2f}", f"{upt_real - target_upt:.2f} vs Objetivo")
                 col4.metric("Ticket Promedio", f"${ticket_real:.2f}", f"${ticket_real - target_ticket:.2f} vs Objetivo")
                 
-                # Diagnóstico y Recomendaciones
                 st.subheader("💡 Diagnóstico y Recomendaciones para la Farmacia")
                 
                 if upt_real < target_upt:
