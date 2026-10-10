@@ -12,9 +12,9 @@ st.set_page_config(
 )
 
 st.title("💊 Indicadores de Ventas por Cajero")
-st.markdown("Configuración matutina y análisis nocturno de reportes por IA.")
+st.markdown("Control operativo diario: Configuración matutina y análisis de cierre nocturno.")
 
-# --- BARRA LATERAL: CONFIGURACIÓN MATUTINA ---
+# --- 1, 2 y 3. BARRA LATERAL: CONFIGURACIÓN MATUTINA ---
 st.sidebar.header("🌅 Configuración Matutina")
 st.sidebar.markdown("Establece los parámetros al iniciar el día:")
 
@@ -38,7 +38,7 @@ num_cajeros_turno = st.sidebar.number_input(
     help="Indica cuántos cajeros trabajaron en la jornada para repartir la meta diaria equitativamente."
 )
 
-# --- CÁLCULO DE META DIARIA REQUERIDA ---
+# --- 4 y 5. CÁLCULO DE META DIARIA GLOBAL E INDIVIDUAL ---
 monto_pendiente_usd = meta_mensual_usd - ventas_acumuladas_usd
 if monto_pendiente_usd < 0:
     monto_pendiente_usd = 0.0
@@ -51,14 +51,14 @@ meta_cajero_unidades = meta_hoy_unidades / num_cajeros_turno
 
 st.info(f"""
 ### 📊 Resumen de Metas para la Jornada:
-* **Meta Global Requerida Hoy:** ${meta_hoy_usd:,.2f} USD ({int(meta_hoy_unidades)} unidades)
-* **Meta Individual por Cajero ({num_cajeros_turno} en turno):** **${meta_cajero_usd:,.2f} USD** | **{int(meta_cajero_unidades)} unidades**
+* **4. Meta Global Requerida Hoy (Farmacia):** ${meta_hoy_usd:,.2f} USD ({int(meta_hoy_unidades)} unidades)
+* **5. Meta Individual por Cajero ({num_cajeros_turno} en turno):** **${meta_cajero_usd:,.2f} USD** | **{int(meta_cajero_unidades)} unidades**
 """)
 
-# --- SECCIÓN NOCTURNA: FORMULARIO DE CIERRE ---
+# --- 6 y 7. SECCIÓN NOCTURNA: CIERRE Y ANÁLISIS DE IA ---
 st.markdown("---")
-st.subheader("🌙 Cierre de Jornada: Análisis por IA")
-st.markdown("Ingresa tu clave actual, sube la foto del reporte y presiona el botón para procesar.")
+st.subheader("🌙 Cierre de Jornada: Análisis de Rendimiento por IA")
+st.markdown("Ingresa tu clave, **6. sube la foto del reporte** y presiona el botón para procesar.")
 
 with st.form("form_cierre"):
     api_key = st.text_input("Ingresa tu Gemini API Key:", type="password")
@@ -66,7 +66,7 @@ with st.form("form_cierre"):
     
     submitted = st.form_submit_button("🔍 Analizar Rendimiento de Usuarios con IA")
 
-# Procesamiento al enviar el formulario
+# Procesamiento automático al enviar el formulario
 if submitted:
     if not api_key:
         st.warning("⚠️ Por favor ingresa tu API Key de Gemini.")
@@ -76,7 +76,7 @@ if submitted:
         image = Image.open(uploaded_file)
         st.image(image, caption="Reporte de Cierre Nocturno", use_column_width=True)
         
-        with st.spinner("Procesando la tabla de cierre con Gemini..."):
+        with st.spinner("Procesando la tabla de cierre y calculando indicadores..."):
             try:
                 client = genai.Client(api_key=api_key)
                 
@@ -96,7 +96,6 @@ if submitted:
                 ]
                 """
                 
-                # Configuración exacta con el modelo estándar actual de la SDK de Google GenAI
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
                     contents=[image, prompt]
@@ -113,6 +112,7 @@ if submitted:
                 if isinstance(lista_cajeros, list) and len(lista_cajeros) > 0:
                     st.success(f"✅ ¡Cierre procesado con éxito! Se evaluaron **{len(lista_cajeros)} usuarios** detectados en el reporte.")
                     
+                    # --- 7. ANÁLISIS DETALLADO POR USUARIO ---
                     for item in lista_cajeros:
                         nombre = item.get("cajero", "Usuario Desconocido")
                         ventas_real = float(item.get("ventas_usd", 0))
@@ -128,23 +128,23 @@ if submitted:
                             col1, col2, col3, col4 = st.columns(4)
                             col1.metric("Ventas USD", f"${ventas_real:,.2f}", f"{((ventas_real/meta_cajero_usd)-1)*100:.1f}% vs Meta")
                             col2.metric("Unidades", f"{int(unidades_real)}", f"{((unidades_real/meta_cajero_unidades)-1)*100:.1f}% vs Meta")
-                            col3.metric("UPT", f"{upt_real:.2f}", f"{upt_real - target_upt:.2f} vs Obj")
-                            col4.metric("Ticket Prom.", f"${ticket_real:.2f}", f"${ticket_real - target_ticket:.2f} vs Obj")
+                            col3.metric("UPT (Unid/Factura)", f"{upt_real:.2f}", f"{upt_real - target_upt:.2f} vs Obj")
+                            col4.metric("Ticket Promedio", f"${ticket_real:.2f}", f"${ticket_real - target_ticket:.2f} vs Obj")
                             
-                            st.markdown("**💡 Diagnóstico y Recomendaciones:**")
+                            st.markdown("**💡 7. Diagnóstico y Recomendaciones de Mejora:**")
                             if upt_real < target_upt:
-                                st.warning(f"⚠️ **UPT Bajo ({upt_real:.2f}):** El usuario debe impulsar con más fuerza la venta cruzada y artículos complementarios en caja.")
+                                st.warning(f"⚠️ **UPT Bajo ({upt_real:.2f} vs objetivo de {target_upt}):** El usuario debe mejorar la venta cruzada, ofreciendo productos complementarios (como vitaminas, analgésicos o cuidado personal) en cada transacción.")
                             else:
-                                st.success(f"✅ **UPT Destacado ({upt_real:.2f}):** Excelente colocación de múltiples artículos por ticket.")
+                                st.success(f"✅ **UPT Destacado ({upt_real:.2f}):** Excelente colocación de múltiples artículos por cliente.")
                                 
                             if ticket_real < target_ticket:
-                                st.warning(f"⚠️ **Ticket Promedio Bajo (${ticket_real:.2f}):** Se sugiere promover marcas de mayor valor o combos en mostrador.")
+                                st.warning(f"⚠️ **Ticket Promedio Bajo (${ticket_real:.2f} vs objetivo de ${target_ticket:.2f}):** Se recomienda incentivar marcas de mayor valor, combos o presentaciones más grandes para elevar el monto por factura.")
                             else:
-                                st.success(f"✅ **Ticket Promedio Alto (${ticket_real:.2f}):** Muy buen valor monetario por cada transacción.")
+                                st.success(f"✅ **Ticket Promedio Alto (${ticket_real:.2f}):** Muy buen valor monetario por cada cliente atendido.")
                                 
                             st.markdown("---")
                 else:
-                    st.warning("No se pudieron extraer filas de usuarios en la imagen. Verifica que la foto esté nítida.")
+                    st.warning("No se pudieron extraer filas de usuarios en la imagen. Verifica que la foto esté nítida y muestre la tabla completa.")
                     
             except Exception as e:
                 st.error(f"Error procesando los datos de la imagen: {e}")
