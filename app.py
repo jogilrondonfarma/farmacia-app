@@ -104,7 +104,7 @@ if uploaded_file and api_key:
                 Responde ÚNICAMENTE con el objeto JSON sin formato adicional.
                 """
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-2.0-flash',
                     contents=[image, prompt]
                 )
                 
