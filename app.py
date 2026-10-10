@@ -40,16 +40,19 @@ st.info(f"""
 * **Unidades Requeridas:** {int(meta_hoy_unidades)} unidades
 """)
 
-# --- CONFIGURACIÓN DE NOMBRES DE CAJEROS CON MEMORIA ---
+# --- CONFIGURACIÓN DE NOMBRES DE CAJEROS (ACTUALIZADO SIN YORLIN) ---
 st.subheader("👥 Asignación de Turno")
 
+# Lista actualizada sin personal inactivo y lista para agregar nuevos
+nombres_actualizados_defecto = "Mary Millán, Yosfrank Gamero, Doralys Cumaná"
+
 if "nombres_cajeros" not in st.session_state:
-    st.session_state.nombres_cajeros = "Mary Millán, Yosfrank Gamero, Doralys Cumaná, Yorlin Henríquez"
+    st.session_state.nombres_cajeros = nombres_actualizados_defecto
 
 cajeros_input = st.text_area(
     "Nombres de cajeros disponibles (separa cada nombre con una coma):",
     value=st.session_state.nombres_cajeros,
-    help="Puedes escribir o agregar nuevos nombres aquí."
+    help="Puedes borrar, escribir o agregar nuevos nombres aquí mismo cuando lo necesites."
 )
 
 st.session_state.nombres_cajeros = cajeros_input
@@ -84,21 +87,22 @@ api_key = st.text_input("Ingresa tu Gemini API Key:", type="password")
 # --- CARGA Y PROCESAMIENTO DE FOTO ---
 st.markdown("---")
 st.subheader("📸 Cargar Foto del Reporte de Cierre")
-uploaded_file = st.file_uploader("Sube la imagen enviada por WhatsApp", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Sube la imagen enviada por WhatsApp", type=["jpg", "jpeg", "png", "webp", "heic"])
 
 if uploaded_file and api_key:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Reporte Cargado", use_column_width=True)
+    st.image(image, caption="Reporte Cargado Correctamente", use_column_width=True)
     
     if st.button("🔍 Analizar Reporte de Cajeros con IA"):
-        with st.spinner("Procesando la tabla de cajeros..."):
+        with st.spinner("Procesando la tabla de cajeros con Gemini..."):
             try:
                 client = genai.Client(api_key=api_key)
-                prompt = """
+                prompt = f"""
                 Esta imagen contiene un reporte de ventas de farmacia por cajero.
-                Lee detenidamente la tabla o lista e identifica CADA CAJERO individualmente.
+                Lee detenidamente la tabla o lista e identifica CADA CAJERO individualmente con sus valores.
+                Toma en cuenta que los cajeros oficiales registrados son: {cajeros_input}.
                 
-                Responde EXCLUSIVAMENTE con un arreglo JSON de objetos con la siguiente estructura:
+                Responde EXCLUSIVAMENTE con un arreglo JSON válido de objetos con la siguiente estructura exacta:
                 [
                   {
                     "cajero": "Nombre del Cajero",
@@ -109,10 +113,10 @@ if uploaded_file and api_key:
                 ]
                 
                 Instrucciones estrictas:
-                1. Extrae el monto de venta en dólares/divisas (ventas_usd).
+                1. Extrae el monto total de venta en dólares/divisas (ventas_usd).
                 2. Extrae las unidades vendidas (unidades).
-                3. Extrae la cantidad de tickets/facturas/clientes (trafico). Si no es visible, asigna 1.
-                4. Devuelve SOLO el JSON sin texto ni bloques de formato antes o después.
+                3. Extrae la cantidad de transacciones, tickets o facturas (trafico). Si no aparece explícito, asigna 1.
+                4. Devuelve SOLO el JSON limpio sin texto ni bloques markdown adicionales.
                 """
                 
                 response = client.models.generate_content(
@@ -162,7 +166,7 @@ if uploaded_file and api_key:
                                 
                             st.markdown("---")
                 else:
-                    st.warning("No se pudieron extraer filas de cajeros en la imagen. Asegúrate de que la foto esté bien enfocada.")
+                    st.warning("No se pudieron extraer filas de cajeros en la imagen. Asegúrate de que la foto tenga buena iluminación.")
                     
             except Exception as e:
                 st.error(f"Error procesando los datos de la imagen: {e}")
