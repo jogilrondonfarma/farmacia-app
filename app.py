@@ -96,9 +96,9 @@ if submitted:
                 ]
                 """
                 
-                # Usando modelo estable gemini-2.0-flash
+                # Modelo correcto y vigente
                 response = client.models.generate_content(
-                    model='gemini-2.0-flash',
+                    model='gemini-3.8-flash',
                     contents=[image, prompt]
                 )
                 
