@@ -40,16 +40,22 @@ st.info(f"""
 * **Unidades Requeridas:** {int(meta_hoy_unidades)} unidades
 """)
 
-# --- CONFIGURACIÓN DE NOMBRES DE CAJEROS ---
+# --- CONFIGURACIÓN DE NOMBRES DE CAJEROS CON MEMORIA ---
 st.subheader("👥 Asignación de Turno")
 
-# Aquí puedes editar los nombres por defecto o agregar más separados por comas
-nombres_por_defecto = "Mary Millán, Yosfrank Gamero, Doralys Cumaná, Yorlin Henríquez"
+# Inicializar memoria para los nombres si no existe
+if "nombres_cajeros" not in st.session_state:
+    st.session_state.nombres_cajeros = "Mary Millán, Yosfrank Gamero, Doralys Cumaná, Yorlin Henríquez"
+
+# Caja de texto conectada a la memoria
 cajeros_input = st.text_area(
-    "Nombres de cajeros disponibles (separa cada nobre con una coma):",
-    value=nombres_por_defecto,
+    "Nombres de cajeros disponibles (separa cada nombre con una coma):",
+    value=st.session_state.nombres_cajeros,
     help="Puedes escribir o agregar nuevos nombres aquí."
 )
+
+# Guardar cambios en la memoria automáticamente
+st.session_state.nombres_cajeros = cajeros_input
 
 # Convertir el texto ingresado en una lista limpia
 cajeros_lista = [c.strip() for c in cajeros_input.split(",") if c.strip()]
