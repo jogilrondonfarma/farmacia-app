@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("💊 Indicadores de Ventas por Cajero")
-st.markdown("Análisis diario de metas e indicadores mediante la foto general del reporte.")
+st.markdown("Análisis diario de metas e indicadores mediante la foto del reporte.")
 
 # --- SIDEBAR: CONFIGURACIÓN DE METAS MENSUALES Y DÍAS ---
 st.sidebar.header("🎯 Metas y Configuración Mensual")
@@ -40,90 +40,131 @@ st.info(f"""
 * **Unidades Requeridas:** {int(meta_hoy_unidades)} unidades
 """)
 
+# --- CONFIGURACIÓN DE NOMBRES DE CAJEROS CON MEMORIA ---
+st.subheader("👥 Asignación de Turno")
+
+if "nombres_cajeros" not in st.session_state:
+    st.session_state.nombres_cajeros = "Mary Millán, Yosfrank Gamero, Doralys Cumaná, Yorlin Henríquez"
+
+cajeros_input = st.text_area(
+    "Nombres de cajeros disponibles (separa cada nombre con una coma):",
+    value=st.session_state.nombres_cajeros,
+    help="Puedes escribir o agregar nuevos nombres aquí."
+)
+
+st.session_state.nombres_cajeros = cajeros_input
+
+cajeros_lista = [c.strip() for c in cajeros_input.split(",") if c.strip()]
+
+cajeros_activos = st.multiselect(
+    "Selecciona los cajeros que están de turno hoy:",
+    options=cajeros_lista,
+    default=cajeros_lista[:2] if len(cajeros_lista) >= 2 else cajeros_lista
+)
+
+if cajeros_activos:
+    num_cajeros = len(cajeros_activos)
+    meta_cajero_usd = meta_hoy_usd / num_cajeros
+    meta_cajero_unidades = meta_hoy_unidades / num_cajeros
+    
+    st.success(f"""
+    **Meta Individual para los {num_cajeros} cajeros en turno hoy:**
+    * **Meta USD por Cajero:** ${meta_cajero_usd:,.2f} USD
+    * **Meta Unidades por Cajero:** {int(meta_cajero_unidades)} unidades
+    * **Meta UPT:** {target_upt}
+    * **Meta Ticket Promedio:** ${target_ticket:.2f} USD
+    """)
+else:
+    meta_cajero_usd = meta_hoy_usd
+    meta_cajero_unidades = meta_hoy_unidades
+
 # --- CLAVE API DE GEMINI ---
 api_key = st.text_input("Ingresa tu Gemini API Key:", type="password")
 
 # --- CARGA Y PROCESAMIENTO DE FOTO ---
 st.markdown("---")
-st.subheader("📸 Cargar Foto General del Reporte de Cierre")
-uploaded_file = st.file_uploader("Sube la imagen de WhatsApp con la lista de cajeros", type=["jpg", "jpeg", "png"])
+st.subheader("📸 Cargar Foto del Reporte de Cierre")
+uploaded_file = st.file_uploader("Sube la imagen enviada por WhatsApp", type=["jpg", "jpeg", "png"])
 
 if uploaded_file and api_key:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Reporte General Cargado", use_column_width=True)
+    st.image(image, caption="Reporte Cargado", use_column_width=True)
     
-    if st.button("🔍 Analizar Todos los Cajeros con IA"):
-        with st.spinner("Leyendo la tabla de cajeros y calculando indicadores individuales..."):
+    if st.button("🔍 Analizar Reporte de Cajeros con IA"):
+        with st.spinner("Procesando la tabla de cajeros..."):
             try:
                 client = genai.Client(api_key=api_key)
                 prompt = """
-                Analiza esta imagen de reporte de cierre de ventas de farmacia que contiene una lista o tabla de varios cajeros.
-                Extrae la información de CADA CAJERO que aparezca en el reporte en una lista de objetos JSON. 
-                Cada objeto debe tener exactamente estas llaves:
-                - cajero: (nombre completo del cajero)
-                - ventas_usd: (monto total en dólares o divisas de ese cajero como número)
-                - unidades: (total de unidades vendidas por ese cajero como número)
-                - trafico: (cantidad total de transacciones, tickets o facturas de ese cajero como número)
+                Esta imagen contiene un reporte de ventas de farmacia por cajero.
+                Lee detenidamente la tabla o lista e identifica CADA CAJERO individualmente.
                 
-                Responde ÚNICAMENTE con una lista JSON válida (ejemplo: [{"cajero": "NOMBRE", "ventas_usd": 0.0, "unidades": 0, "trafico": 0}]) sin texto adicional ni formato markdown extra.
+                Responde EXCLUSIVAMENTE con un arreglo JSON de objetos con la siguiente estructura:
+                [
+                  {
+                    "cajero": "Nombre del Cajero",
+                    "ventas_usd": 0.00,
+                    "unidades": 0,
+                    "trafico": 0
+                  }
+                ]
+                
+                Instrucciones estrictas:
+                1. Extrae el monto de venta en dólares/divisas (ventas_usd).
+                2. Extrae las unidades vendidas (unidades).
+                3. Extrae la cantidad de tickets/facturas/clientes (trafico). Si no es visible, asigna 1.
+                4. Devuelve SOLO el JSON sin texto ni bloques de formato antes o después.
                 """
-                # Usando el modelo actualizado gemini-3.8-flash
+                
                 response = client.models.generate_content(
                     model='gemini-3.8-flash',
                     contents=[image, prompt]
                 )
                 
                 raw_text = response.text.strip()
-                if raw_text.startswith("```json"):
-                    raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-                elif raw_text.startswith("```"):
-                    raw_text = raw_text.replace("```", "").strip()
+                if "```json" in raw_text:
+                    raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in raw_text:
+                    raw_text = raw_text.split("```")[1].split("```")[0].strip()
                 
                 lista_cajeros = json.loads(raw_text)
                 
-                num_cajeros_detectados = len(lista_cajeros)
-                meta_cajero_usd = meta_hoy_usd / num_cajeros_detectados if num_cajeros_detectados > 0 else meta_hoy_usd
-                meta_cajero_unidades = meta_hoy_unidades / num_cajeros_detectados if num_cajeros_detectados > 0 else meta_hoy_unidades
-
-                st.success(f"✅ Se detectaron **{num_cajeros_detectados} cajeros** en el reporte. Meta individual estimada por cajero: **${meta_cajero_usd:,.2f} USD**.")
-
-                # Recorrer cada cajero detectado y mostrar su tarjeta individual
-                for item in lista_cajeros:
-                    nombre = item.get("cajero", "Desconocido")
-                    ventas_real = float(item.get("ventas_usd", 0))
-                    unidades_real = float(item.get("unidades", 0))
-                    trafico_real = float(item.get("trafico", 1))
+                if isinstance(lista_cajeros, list) and len(lista_cajeros) > 0:
+                    st.success(f"✅ Se analizó con éxito el reporte para **{len(lista_cajeros)} cajero(s)**.")
                     
-                    upt_real = unidades_real / trafico_real if trafico_real > 0 else 0
-                    ticket_real = ventas_real / trafico_real if trafico_real > 0 else 0
-                    
-                    with st.container():
-                        st.markdown(f"### 👤 Cajero(a): {nombre}")
+                    for item in lista_cajeros:
+                        nombre = item.get("cajero", "Cajero Desconocido")
+                        ventas_real = float(item.get("ventas_usd", 0))
+                        unidades_real = float(item.get("unidades", 0))
+                        trafico_real = float(item.get("trafico", 1))
                         
-                        col1, col2, col3, col4 = st.columns(4)
-                        col1.metric("Ventas USD", f"${ventas_real:,.2f}", f"{((ventas_real/meta_cajero_usd)-1)*100:.1f}% vs Meta")
-                        col2.metric("Unidades", f"{int(unidades_real)}", f"{((unidades_real/meta_cajero_unidades)-1)*100:.1f}% vs Meta")
-                        col3.metric("UPT", f"{upt_real:.2f}", f"{upt_real - target_upt:.2f} vs Obj")
-                        col4.metric("Ticket Prom.", f"${ticket_real:.2f}", f"${ticket_real - target_ticket:.2f} vs Obj")
+                        upt_real = unidades_real / trafico_real if trafico_real > 0 else 0
+                        ticket_real = ventas_real / trafico_real if trafico_real > 0 else 0
                         
-                        # Diagnóstico y recomendaciones específicas por cajero
-                        recomendaciones = []
-                        if upt_real < target_upt:
-                            recomendaciones.append(f"⚠️ **UPT Bajo ({upt_real:.2f}):** Debe mejorar la venta cruzada en caja ofreciendo productos complementarios (ej. sueros, analgésicos con protectores).")
-                        else:
-                            recomendaciones.append(f"✅ **Buen UPT ({upt_real:.2f}):** Excelente manejo de artículos por cliente.")
+                        with st.container():
+                            st.markdown(f"### 👤 Cajero(a): {nombre}")
                             
-                        if ticket_real < target_ticket:
-                            recomendaciones.append(f"⚠️ **Ticket Promedio Bajo (${ticket_real:.2f}):** Necesita incentivar marcas de mayor valor o combos en mostrador para elevar el monto por cliente.")
-                        else:
-                            recomendaciones.append(f"✅ **Buen Ticket Promedio (${ticket_real:.2f}):** Excelente valor por transacción.")
+                            col1, col2, col3, col4 = st.columns(4)
+                            col1.metric("Ventas USD", f"${ventas_real:,.2f}", f"{((ventas_real/meta_cajero_usd)-1)*100:.1f}% vs Meta")
+                            col2.metric("Unidades", f"{int(unidades_real)}", f"{((unidades_real/meta_cajero_unidades)-1)*100:.1f}% vs Meta")
+                            col3.metric("UPT", f"{upt_real:.2f}", f"{upt_real - target_upt:.2f} vs Obj")
+                            col4.metric("Ticket Prom.", f"${ticket_real:.2f}", f"${ticket_real - target_ticket:.2f} vs Obj")
                             
-                        for rec in recomendaciones:
-                            st.markdown(f"- {rec}")
-                            
-                        st.markdown("---")
+                            st.markdown("**💡 Recomendaciones e Indicadores:**")
+                            if upt_real < target_upt:
+                                st.warning(f"⚠️ **UPT Bajo ({upt_real:.2f}):** Debe reforzarse la venta de impulso y productos complementarios en mostrador.")
+                            else:
+                                st.success(f"✅ **UPT Destacado ({upt_real:.2f}):** Buen volumen de unidades por cliente.")
+                                
+                            if ticket_real < target_ticket:
+                                st.warning(f"⚠️ **Ticket Promedio Bajo (${ticket_real:.2f}):** Se recomienda incentivar combos o marcas de mayor valor.")
+                            else:
+                                st.success(f"✅ **Ticket Promedio Alto (${ticket_real:.2f}):** Excelente rendimiento por factura.")
+                                
+                            st.markdown("---")
+                else:
+                    st.warning("No se pudieron extraer filas de cajeros en la imagen. Asegúrate de que la foto esté bien enfocada.")
                     
             except Exception as e:
-                st.error(f"Error al procesar la imagen o la respuesta de la IA: {e}")
+                st.error(f"Error procesando los datos de la imagen: {e}")
 elif uploaded_file and not api_key:
     st.warning("Por favor ingresa tu API Key de Gemini para procesar la imagen.")
