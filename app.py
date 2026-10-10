@@ -38,7 +38,7 @@ num_cajeros_turno = st.sidebar.number_input(
     help="Indica cuántos cajeros trabajaron en la jornada para repartir la meta diaria equitativamente."
 )
 
-# --- CÁLCULO DE META DIARIA REQUERIDA (FARMACIA Y CAJERO) ---
+# --- CÁLCULO DE META DIARIA REQUERIDA ---
 monto_pendiente_usd = meta_mensual_usd - ventas_acumuladas_usd
 if monto_pendiente_usd < 0:
     monto_pendiente_usd = 0.0
@@ -55,22 +55,29 @@ st.info(f"""
 * **Meta Individual por Cajero ({num_cajeros_turno} en turno):** **${meta_cajero_usd:,.2f} USD** | **{int(meta_cajero_unidades)} unidades**
 """)
 
-# --- CLAVE API DE GEMINI ---
-api_key = st.text_input("Ingresa tu Gemini API Key:", type="password", help="Puedes guardarla o ingresarla antes de analizar la foto en la noche.")
-
-# --- SECCIÓN NOCTURNA: CARGA Y ANÁLISIS DE CIERRE ---
+# --- SECCIÓN NOCTURNA: FORMULARIO DE CIERRE ---
 st.markdown("---")
-st.subheader("🌙 Cierre de Jornada: Subir Foto del Reporte")
-st.markdown("Al finalizar el día, sube la foto de WhatsApp con la tabla de cierre para auditar el rendimiento de cada usuario.")
+st.subheader("🌙 Cierre de Jornada: Análisis por IA")
+st.markdown("Ingresa tu clave, sube la foto del reporte y presiona el botón para procesar.")
 
-uploaded_file = st.file_uploader("Sube la imagen del reporte general", type=["jpg", "jpeg", "png", "webp", "heic"])
-
-if uploaded_file and api_key:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Reporte de Cierre Nocturno", use_column_width=True)
+# Usamos un formulario para evitar que la página se recargue sola al interactuar
+with st.form("form_cierre"):
+    api_key = st.text_input("Ingresa tu Gemini API Key:", type="password")
+    uploaded_file = st.file_uploader("Sube la imagen del reporte general (tabla de usuarios)", type=["jpg", "jpeg", "png", "webp", "heic"])
     
-    if st.button("🔍 Analizar Rendimiento de Usuarios con IA"):
-        with st.spinner("Procesando la tabla de cierre de la farmacia..."):
+    submitted = st.form_submit_button("🔍 Analizar Rendimiento de Usuarios con IA")
+
+# Procesamiento al enviar el formulario
+if submitted:
+    if not api_key:
+        st.warning("⚠️ Por favor ingresa tu API Key de Gemini.")
+    elif not uploaded_file:
+        st.warning("⚠️ Por favor sube la foto del reporte antes de analizar.")
+    else:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Reporte de Cierre Nocturno", use_column_width=True)
+        
+        with st.spinner("Procesando la tabla de cierre de la farmacia con Gemini..."):
             try:
                 client = genai.Client(api_key=api_key)
                 
@@ -141,5 +148,3 @@ if uploaded_file and api_key:
                     
             except Exception as e:
                 st.error(f"Error procesando los datos de la imagen: {e}")
-elif uploaded_file and not api_key:
-    st.warning("Por favor ingresa tu API Key de Gemini para poder procesar la foto de cierre.")
