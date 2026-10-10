@@ -96,9 +96,9 @@ if submitted:
                 ]
                 """
                 
-                # Modelo correcto y vigente
+                # Modelo estándar y garantizado por la API de Google GenAI
                 response = client.models.generate_content(
-                    model='gemini-3.8-flash',
+                    model='gemini-flash-latest',
                     contents=[image, prompt]
                 )
                 
