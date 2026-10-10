@@ -58,7 +58,7 @@ st.info(f"""
 # --- SECCIÓN NOCTURNA: FORMULARIO DE CIERRE ---
 st.markdown("---")
 st.subheader("🌙 Cierre de Jornada: Análisis por IA")
-st.markdown("Ingresa tu clave, sube la foto del reporte y presiona el botón para procesar.")
+st.markdown("Ingresa tu clave actual, sube la foto del reporte y presiona el botón para procesar.")
 
 with st.form("form_cierre"):
     api_key = st.text_input("Ingresa tu Gemini API Key:", type="password")
@@ -96,9 +96,9 @@ if submitted:
                 ]
                 """
                 
-                # Modelo oficial estable gemini-2.5-flash
+                # Usando el identificador universal estable gemini-flash-latest
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-flash-latest',
                     contents=[image, prompt]
                 )
                 
