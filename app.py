@@ -14,13 +14,27 @@ st.set_page_config(
 st.title("💊 Indicadores de Ventas por Cajero")
 st.markdown("Control operativo diario: Configuración matutina y análisis de cierre nocturno.")
 
-# --- CARGAR API KEY AUTOMÁTICA DESDE GITHUB SECRETS (SI EXISTE) ---
-api_key_sistema = ""
+# --- INICIALIZAR MEMORIA DE SESIÓN PARA LA API KEY ---
+if "api_key_sesion" not in st.session_state:
+    st.session_state.api_key_sesion = ""
+
+# Intentar leer primero desde los secretos de Streamlit Cloud
+api_key_final = ""
 try:
-    if "GEMINI_API_KEY" in st.secrets:
-        api_key_sistema = st.secrets["GEMINI_API_KEY"]
+    if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"].strip():
+        api_key_final = st.secrets["GEMINI_API_KEY"].strip()
 except Exception:
     pass
+
+# Si no hay clave en los secretos, la tomamos de la sesión o la pedimos en la barra lateral
+if not api_key_final:
+    if st.session_state.api_key_sesion:
+        api_key_final = st.session_state.api_key_sesion
+    else:
+        ingresada = st.sidebar.text_input("🔑 Ingresa tu Gemini API Key:", type="password")
+        if ingresada.strip():
+            st.session_state.api_key_sesion = ingresada.strip()
+            api_key_final = ingresada.strip()
 
 # --- BARRA LATERAL: CONFIGURACIÓN MATUTINA ---
 st.sidebar.header("🌅 Configuración Matutina")
@@ -68,18 +82,14 @@ st.markdown("---")
 st.subheader("🌙 Cierre de Jornada: Análisis de Rendimiento por IA")
 st.markdown("Sube la foto del reporte y presiona el botón para procesar.")
 
-# Si no está configurada en los secretos de GitHub, se pide en un campo lateral discreto
-if not api_key_sistema:
-    api_key_sistema = st.sidebar.text_input("🔑 Ingresa tu Gemini API Key:", type="password")
-
 with st.form("form_cierre"):
     uploaded_file = st.file_uploader("Sube la imagen del reporte general (tabla de usuarios)", type=["jpg", "jpeg", "png", "webp", "heic"])
     submitted = st.form_submit_button("🔍 Analizar Rendimiento de Usuarios con IA")
 
 # Procesamiento automático al enviar el formulario
 if submitted:
-    if not api_key_sistema:
-        st.warning("⚠️ Por favor configura tu API Key (en los secretos de la app o en la barra lateral).")
+    if not api_key_final:
+        st.warning("⚠️ No se detectó ninguna API Key válida. Configúrala en los Secrets de Streamlit o en la barra lateral.")
     elif not uploaded_file:
         st.warning("⚠️ Por favor sube la foto del reporte antes de analizar.")
     else:
@@ -88,7 +98,7 @@ if submitted:
         
         with st.spinner("Procesando la tabla de cierre con Gemini..."):
             try:
-                client = genai.Client(api_key=api_key_sistema)
+                client = genai.Client(api_key=api_key_final)
                 
                 prompt = """
                 Analiza esta imagen de reporte de cierre de ventas de farmacia. 
