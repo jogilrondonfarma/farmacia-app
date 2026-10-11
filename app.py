@@ -12,11 +12,15 @@ st.set_page_config(
 )
 
 st.title("💊 Indicadores de Ventas por Cajero")
-st.markdown("Control operativo diario: Configuración matutina y análisis de cierre nocturno con memoria activa.")
+st.markdown("Control operativo diario: Configuración matutina y análisis de cierre nocturno.")
 
-# --- INICIALIZAR MEMORIA DE SESIÓN (SESSION STATE) ---
-if "api_key_guardada" not in st.session_state:
-    st.session_state.api_key_guardada = ""
+# --- CARGAR API KEY AUTOMÁTICA DESDE GITHUB SECRETS (SI EXISTE) ---
+api_key_sistema = ""
+try:
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key_sistema = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    pass
 
 # --- BARRA LATERAL: CONFIGURACIÓN MATUTINA ---
 st.sidebar.header("🌅 Configuración Matutina")
@@ -59,20 +63,14 @@ st.info(f"""
 * **Meta Individual por Cajero ({num_cajeros_turno} en turno):** **${meta_cajero_usd:,.2f} USD** | **{int(meta_cajero_unidades)} unidades**
 """)
 
-# --- SECCIÓN NOCTURNA: FORMULARIO DE CIERRE CON MEMORIA DE API KEY ---
+# --- SECCIÓN NOCTURNA: FORMULARIO DE CIERRE ---
 st.markdown("---")
 st.subheader("🌙 Cierre de Jornada: Análisis de Rendimiento por IA")
 st.markdown("Sube la foto del reporte y presiona el botón para procesar.")
 
-# Campo de API Key sincronizado con session_state para que no se borre
-api_key_input = st.sidebar.text_input(
-    "🔑 Gemini API Key (Se guarda en memoria):", 
-    value=st.session_state.api_key_guardada, 
-    type="password",
-    help="Ingresa tu clave una sola vez y se mantendrá recordada mientras tengas la app abierta."
-)
-if api_key_input:
-    st.session_state.api_key_guardada = api_key_input
+# Si no está configurada en los secretos de GitHub, se pide en un campo lateral discreto
+if not api_key_sistema:
+    api_key_sistema = st.sidebar.text_input("🔑 Ingresa tu Gemini API Key:", type="password")
 
 with st.form("form_cierre"):
     uploaded_file = st.file_uploader("Sube la imagen del reporte general (tabla de usuarios)", type=["jpg", "jpeg", "png", "webp", "heic"])
@@ -80,8 +78,8 @@ with st.form("form_cierre"):
 
 # Procesamiento automático al enviar el formulario
 if submitted:
-    if not st.session_state.api_key_guardada:
-        st.warning("⚠️ Por favor ingresa tu API Key de Gemini en el campo de la barra lateral.")
+    if not api_key_sistema:
+        st.warning("⚠️ Por favor configura tu API Key (en los secretos de la app o en la barra lateral).")
     elif not uploaded_file:
         st.warning("⚠️ Por favor sube la foto del reporte antes de analizar.")
     else:
@@ -90,7 +88,7 @@ if submitted:
         
         with st.spinner("Procesando la tabla de cierre con Gemini..."):
             try:
-                client = genai.Client(api_key=st.session_state.api_key_guardada)
+                client = genai.Client(api_key=api_key_sistema)
                 
                 prompt = """
                 Analiza esta imagen de reporte de cierre de ventas de farmacia. 
