@@ -2,6 +2,7 @@ import streamlit as st
 from PIL import Image
 import os
 import json
+import time
 from google import genai
 
 # --- CONFIGURACIÓN DE PÁGINA ---
@@ -96,75 +97,87 @@ if submitted:
         image = Image.open(uploaded_file)
         st.image(image, caption="Reporte de Cierre Nocturno", use_column_width=True)
         
-        with st.spinner("Procesando la tabla de cierre con Gemini (Modelo alternativo de alta disponibilidad)..."):
-            try:
-                client = genai.Client(api_key=api_key_final)
-                
-                prompt = """
-                Analiza esta imagen de reporte de cierre de ventas de farmacia. 
-                En la tabla verás una columna llamada 'USUARIO' (que contiene los nombres de cada cajero/usuario), 'VENTAS $' (o ventas en dólares), 'UNID V' (unidades vendidas) y 'FACTURAS' (tráfico o transacciones).
-                
-                Extrae la información de cada fila de la tabla en formato JSON estricto. 
-                Responde ÚNICAMENTE con un arreglo JSON válido con esta estructura exacta, sin texto adicional ni bloques markdown:
-                [
-                  {
-                    "cajero": "Nombre exacto que aparece en la columna USUARIO",
-                    "ventas_usd": 0.00,
-                    "unidades": 0,
-                    "trafico": 0
-                  }
-                ]
-                """
-                
-                # Usando gemini-2.0-flash para evitar saturaciones de alta demanda
-                response = client.models.generate_content(
-                    model='gemini-2.0-flash',
-                    contents=[image, prompt]
-                )
-                
-                raw_text = response.text.strip()
-                if "```json" in raw_text:
-                    raw_text = raw_text.split("```json")[1].split("```")[0].strip()
-                elif "```" in raw_text:
-                    raw_text = raw_text.split("```")[1].split("```")[0].strip()
-                
-                lista_cajeros = json.loads(raw_text)
-                
-                if isinstance(lista_cajeros, list) and len(lista_cajeros) > 0:
-                    st.success(f"✅ ¡Cierre procesado con éxito! Se evaluaron **{len(lista_cajeros)} usuarios** detectados en el reporte.")
+        with st.spinner("Procesando la tabla de cierre con Gemini (con reintentos automáticos)..."):
+            response = None
+            error_msg = ""
+            
+            # Sistema de reintentos (hasta 3 intentos si el servidor está saturado)
+            for intento in range(3):
+                try:
+                    client = genai.Client(api_key=api_key_final)
                     
-                    for item in lista_cajeros:
-                        nombre = item.get("cajero", "Usuario Desconocido")
-                        ventas_real = float(item.get("ventas_usd", 0))
-                        unidades_real = float(item.get("unidades", 0))
-                        trafico_real = float(item.get("trafico", 1))
-                        
-                        upt_real = unidades_real / trafico_real if trafico_real > 0 else 0
-                        ticket_real = ventas_real / trafico_real if trafico_real > 0 else 0
-                        
-                        with st.container():
-                            st.markdown(f"### 👤 Usuario: {nombre}")
-                            
-                            col1, col2, col3, col4 = st.columns(4)
-                            col1.metric("Ventas USD", f"${ventas_real:,.2f}", f"{((ventas_real/meta_cajero_usd)-1)*100:.1f}% vs Meta")
-                            col2.metric("Unidades", f"{int(unidades_real)}", f"{((unidades_real/meta_cajero_unidades)-1)*100:.1f}% vs Meta")
-                            col3.metric("UPT", f"{upt_real:.2f}", f"{upt_real - target_upt:.2f} vs Obj")
-                            col4.metric("Ticket Prom.", f"${ticket_real:.2f}", f"${ticket_real - target_ticket:.2f} vs Obj")
-                            
-                            st.markdown("**💡 Diagnóstico y Recomendaciones:**")
-                            if upt_real < target_upt:
-                                st.warning(f"⚠️ **UPT Bajo ({upt_real:.2f}):** El usuario debe impulsar con más fuerza la venta cruzada y artículos complementarios en caja.")
-                            else:
-                                st.success(f"✅ **UPT Destacado ({upt_real:.2f}):** Excelente colocación de múltiples artículos por ticket.")
-                                
-                            if ticket_real < target_ticket:
-                                st.warning(f"⚠️ **Ticket Promedio Bajo (${ticket_real:.2f}):** Se sugiere promover marcas de mayor valor o combos en mostrador.")
-                            else:
-                                st.success(f"✅ **Ticket Promedio Alto (${ticket_real:.2f}):** Muy buen valor monetario por cada transacción.")
-                                
-                            st.markdown("---")
-                else:
-                    st.warning("No se pudieron extraer filas de usuarios en la imagen. Verifica que la foto esté nítida.")
+                    prompt = """
+                    Analiza esta imagen de reporte de cierre de ventas de farmacia. 
+                    En la tabla verás una columna llamada 'USUARIO' (que contiene los nombres de cada cajero/usuario), 'VENTAS $' (o ventas en dólares), 'UNID V' (unidades vendidas) y 'FACTURAS' (tráfico o transacciones).
                     
-            except Exception as e:
-                st.error(f"Error procesando los datos de la imagen: {e}")
+                    Extrae la información de cada fila de la tabla en formato JSON estricto. 
+                    Responde ÚNICAMENTE con un arreglo JSON válido con esta estructura exacta, sin texto adicional ni bloques markdown:
+                    [
+                      {
+                        "cajero": "Nombre exacto que aparece en la columna USUARIO",
+                        "ventas_usd": 0.00,
+                        "unidades": 0,
+                        "trafico": 0
+                      }
+                    ]
+                    """
+                    
+                    # Usando el modelo obligatorio oficial gemini-3.8-flash
+                    response = client.models.generate_content(
+                        model='gemini-3.8-flash',
+                        contents=[image, prompt]
+                    )
+                    break # Si pasa con éxito, salimos del ciclo de reintentos
+                except Exception as e:
+                    error_msg = str(e)
+                    time.sleep(2) # Espera 2 segundos antes de reintentar
+            
+            if response:
+                try:
+                    raw_text = response.text.strip()
+                    if "```json" in raw_text:
+                        raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+                    elif "```" in raw_text:
+                        raw_text = raw_text.split("```")[1].split("```")[0].strip()
+                    
+                    lista_cajeros = json.loads(raw_text)
+                    
+                    if isinstance(lista_cajeros, list) and len(lista_cajeros) > 0:
+                        st.success(f"✅ ¡Cierre procesado con éxito! Se evaluaron **{len(lista_cajeros)} usuarios** detectados en el reporte.")
+                        
+                        for item in lista_cajeros:
+                            nombre = item.get("cajero", "Usuario Desconocido")
+                            ventas_real = float(item.get("ventas_usd", 0))
+                            unidades_real = float(item.get("unidades", 0))
+                            trafico_real = float(item.get("trafico", 1))
+                            
+                            upt_real = unidades_real / trafico_real if trafico_real > 0 else 0
+                            ticket_real = ventas_real / trafico_real if trafico_real > 0 else 0
+                            
+                            with st.container():
+                                st.markdown(f"### 👤 Usuario: {nombre}")
+                                
+                                col1, col2, col3, col4 = st.columns(4)
+                                col1.metric("Ventas USD", f"${ventas_real:,.2f}", f"{((ventas_real/meta_cajero_usd)-1)*100:.1f}% vs Meta")
+                                col2.metric("Unidades", f"{int(unidades_real)}", f"{((unidades_real/meta_cajero_unidades)-1)*100:.1f}% vs Meta")
+                                col3.metric("UPT", f"{upt_real:.2f}", f"{upt_real - target_upt:.2f} vs Obj")
+                                col4.metric("Ticket Prom.", f"${ticket_real:.2f}", f"${ticket_real - target_ticket:.2f} vs Obj")
+                                
+                                st.markdown("**💡 Diagnóstico y Recomendaciones:**")
+                                if upt_real < target_upt:
+                                    st.warning(f"⚠️ **UPT Bajo ({upt_real:.2f}):** El usuario debe impulsar con más fuerza la venta cruzada y artículos complementarios en caja.")
+                                else:
+                                    st.success(f"✅ **UPT Destacado ({upt_real:.2f}):** Excelente colocación de múltiples artículos por ticket.")
+                                    
+                                if ticket_real < target_ticket:
+                                    st.warning(f"⚠️ **Ticket Promedio Bajo (${ticket_real:.2f}):** Se sugiere promover marcas de mayor valor o combos en mostrador.")
+                                else:
+                                    st.success(f"✅ **Ticket Promedio Alto (${ticket_real:.2f}):** Muy buen valor monetario por cada transacción.")
+                                    
+                                st.markdown("---")
+                    else:
+                        st.warning("No se pudieron extraer filas de usuarios en la imagen. Verifica que la foto esté nítida.")
+                except Exception as parse_error:
+                    st.error(f"Error interpretando la respuesta de la IA: {parse_error}")
+            else:
+                st.error(f"El servidor de Google sigue ocupado tras varios intentos. Error: {error_msg}")
