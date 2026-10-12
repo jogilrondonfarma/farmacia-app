@@ -1,8 +1,6 @@
 import streamlit as st
 from PIL import Image
-import os
 import json
-import time
 from google import genai
 
 # --- CONFIGURACIÓN DE PÁGINA ---
@@ -13,13 +11,12 @@ st.set_page_config(
 )
 
 st.title("💊 Indicadores de Ventas por Cajero")
-st.markdown("Control operativo diario: Configuración matutina y análisis de cierre nocturno.")
+st.markdown("Control operativo diario: Configuración matutina y análisis nocturno de rendimiento.")
 
-# --- INICIALIZAR MEMORIA DE SESIÓN PARA LA API KEY ---
+# --- GESTIÓN DE CREDENCIALES (SECRETS + MEMORIA DE SESIÓN) ---
 if "api_key_sesion" not in st.session_state:
     st.session_state.api_key_sesion = ""
 
-# Intentar leer primero desde los secretos de Streamlit Cloud
 api_key_final = ""
 try:
     if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"].strip():
@@ -27,7 +24,6 @@ try:
 except Exception:
     pass
 
-# Si no hay clave en los secretos, la tomamos de la sesión o la pedimos en la barra lateral
 if not api_key_final:
     if st.session_state.api_key_sesion:
         api_key_final = st.session_state.api_key_sesion
@@ -37,9 +33,9 @@ if not api_key_final:
             st.session_state.api_key_sesion = ingresada.strip()
             api_key_final = ingresada.strip()
 
-# --- BARRA LATERAL: CONFIGURACIÓN MATUTINA ---
+# --- 1, 2 y 3. BARRA LATERAL: CONFIGURACIÓN MATUTINA ---
 st.sidebar.header("🌅 Configuración Matutina")
-st.sidebar.markdown("Establece los parámetros al iniciar el día:")
+st.sidebar.markdown("Parámetros al iniciar el día:")
 
 meta_mensual_usd = st.sidebar.number_input("Meta Mensual ($ USD)", value=15000.0, step=500.0)
 ventas_acumuladas_usd = st.sidebar.number_input("Ventas Acumuladas del Mes ($ USD)", value=4500.0, step=100.0)
@@ -61,7 +57,7 @@ num_cajeros_turno = st.sidebar.number_input(
     help="Indica cuántos cajeros trabajaron en la jornada para repartir la meta diaria equitativamente."
 )
 
-# --- CÁLCULO DE META DIARIA REQUERIDA ---
+# --- 4 y 5. CÁLCULO DE META DIARIA GLOBAL E INDIVIDUAL ---
 monto_pendiente_usd = meta_mensual_usd - ventas_acumuladas_usd
 if monto_pendiente_usd < 0:
     monto_pendiente_usd = 0.0
@@ -74,14 +70,14 @@ meta_cajero_unidades = meta_hoy_unidades / num_cajeros_turno
 
 st.info(f"""
 ### 📊 Resumen de Metas para la Jornada:
-* **Meta Global Requerida Hoy (Farmacia):** ${meta_hoy_usd:,.2f} USD ({int(meta_hoy_unidades)} unidades)
-* **Meta Individual por Cajero ({num_cajeros_turno} en turno):** **${meta_cajero_usd:,.2f} USD** | **{int(meta_cajero_unidades)} unidades**
+* **4. Meta Global Requerida Hoy (Farmacia):** ${meta_hoy_usd:,.2f} USD ({int(meta_hoy_unidades)} unidades)
+* **5. Meta Individual por Cajero ({num_cajeros_turno} en turno):** **${meta_cajero_usd:,.2f} USD** | **{int(meta_cajero_unidades)} unidades**
 """)
 
-# --- SECCIÓN NOCTURNA: FORMULARIO DE CIERRE ---
+# --- 6. SECCIÓN NOCTURNA: FORMULARIO DE CIERRE ---
 st.markdown("---")
 st.subheader("🌙 Cierre de Jornada: Análisis de Rendimiento por IA")
-st.markdown("Sube la foto del reporte y presiona el botón para procesar.")
+st.markdown("Sube la foto del reporte de cierre y presiona el botón para procesar.")
 
 with st.form("form_cierre"):
     uploaded_file = st.file_uploader("Sube la imagen del reporte general (tabla de usuarios)", type=["jpg", "jpeg", "png", "webp", "heic"])
@@ -97,87 +93,78 @@ if submitted:
         image = Image.open(uploaded_file)
         st.image(image, caption="Reporte de Cierre Nocturno", use_column_width=True)
         
-        with st.spinner("Procesando la tabla de cierre con Gemini (con reintentos automáticos)..."):
-            response = None
-            error_msg = ""
+        try:
+            with st.spinner("Procesando la tabla de cierre con Gemini..."):
+                client = genai.Client(api_key=api_key_final)
+                
+                prompt = """
+                Analiza esta imagen de reporte de cierre de ventas de farmacia. 
+                En la tabla verás una columna llamada 'USUARIO' (que contiene los nombres de cada cajero/usuario), 'VENTAS $' (o ventas en dólares), 'UNID V' (unidades vendidas) y 'FACTURAS' (tráfico o transacciones).
+                
+                Extrae la información de cada fila de la tabla en formato JSON estricto. 
+                Responde ÚNICAMENTE con un arreglo JSON válido con esta estructura exacta, sin texto adicional ni bloques markdown:
+                [
+                  {
+                    "cajero": "Nombre exacto que aparece en la columna USUARIO",
+                    "ventas_usd": 0.00,
+                    "unidades": 0,
+                    "trafico": 0
+                  }
+                ]
+                """
+                
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=[image, prompt]
+                )
             
-            # Sistema de reintentos (hasta 3 intentos si el servidor está saturado)
-            for intento in range(3):
-                try:
-                    client = genai.Client(api_key=api_key_final)
+            if response and response.text:
+                raw_text = response.text.strip()
+                if "```json" in raw_text:
+                    raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in raw_text:
+                    raw_text = raw_text.split("```")[1].split("```")[0].strip()
+                
+                lista_cajeros = json.loads(raw_text)
+                
+                if isinstance(lista_cajeros, list) and len(lista_cajeros) > 0:
+                    st.success(f"✅ ¡Cierre procesado con éxito! Se evaluaron **{len(lista_cajeros)} usuarios** detectados en el reporte.")
                     
-                    prompt = """
-                    Analiza esta imagen de reporte de cierre de ventas de farmacia. 
-                    En la tabla verás una columna llamada 'USUARIO' (que contiene los nombres de cada cajero/usuario), 'VENTAS $' (o ventas en dólares), 'UNID V' (unidades vendidas) y 'FACTURAS' (tráfico o transacciones).
-                    
-                    Extrae la información de cada fila de la tabla en formato JSON estricto. 
-                    Responde ÚNICAMENTE con un arreglo JSON válido con esta estructura exacta, sin texto adicional ni bloques markdown:
-                    [
-                      {
-                        "cajero": "Nombre exacto que aparece en la columna USUARIO",
-                        "ventas_usd": 0.00,
-                        "unidades": 0,
-                        "trafico": 0
-                      }
-                    ]
-                    """
-                    
-                    # Usando el modelo obligatorio oficial gemini-3.8-flash
-                    response = client.models.generate_content(
-                        model='gemini-3.8-flash',
-                        contents=[image, prompt]
-                    )
-                    break # Si pasa con éxito, salimos del ciclo de reintentos
-                except Exception as e:
-                    error_msg = str(e)
-                    time.sleep(2) # Espera 2 segundos antes de reintentar
-            
-            if response:
-                try:
-                    raw_text = response.text.strip()
-                    if "```json" in raw_text:
-                        raw_text = raw_text.split("```json")[1].split("```")[0].strip()
-                    elif "```" in raw_text:
-                        raw_text = raw_text.split("```")[1].split("```")[0].strip()
-                    
-                    lista_cajeros = json.loads(raw_text)
-                    
-                    if isinstance(lista_cajeros, list) and len(lista_cajeros) > 0:
-                        st.success(f"✅ ¡Cierre procesado con éxito! Se evaluaron **{len(lista_cajeros)} usuarios** detectados en el reporte.")
+                    # --- 7. ANÁLISIS DETALLADO, DIAGNÓSTICO Y RECOMENDACIONES POR USUARIO ---
+                    for item in lista_cajeros:
+                        nombre = item.get("cajero", "Usuario Desconocido")
+                        ventas_real = float(item.get("ventas_usd", 0))
+                        unidades_real = float(item.get("unidades", 0))
+                        trafico_real = float(item.get("trafico", 1))
                         
-                        for item in lista_cajeros:
-                            nombre = item.get("cajero", "Usuario Desconocido")
-                            ventas_real = float(item.get("ventas_usd", 0))
-                            unidades_real = float(item.get("unidades", 0))
-                            trafico_real = float(item.get("trafico", 1))
+                        upt_real = unidades_real / trafico_real if trafico_real > 0 else 0
+                        ticket_real = ventas_real / trafico_real if trafico_real > 0 else 0
+                        
+                        with st.container():
+                            st.markdown(f"### 👤 Usuario: {nombre}")
                             
-                            upt_real = unidades_real / trafico_real if trafico_real > 0 else 0
-                            ticket_real = ventas_real / trafico_real if trafico_real > 0 else 0
+                            col1, col2, col3, col4 = st.columns(4)
+                            col1.metric("Ventas USD", f"${ventas_real:,.2f}", f"{((ventas_real/meta_cajero_usd)-1)*100:.1f}% vs Meta")
+                            col2.metric("Unidades", f"{int(unidades_real)}", f"{((unidades_real/meta_cajero_unidades)-1)*100:.1f}% vs Meta")
+                            col3.metric("UPT (Unid/Factura)", f"{upt_real:.2f}", f"{upt_real - target_upt:.2f} vs Obj")
+                            col4.metric("Ticket Promedio", f"${ticket_real:.2f}", f"${ticket_real - target_ticket:.2f} vs Obj")
                             
-                            with st.container():
-                                st.markdown(f"### 👤 Usuario: {nombre}")
+                            st.markdown("**💡 7. Diagnóstico y Recomendaciones de Mejora:**")
+                            if upt_real < target_upt:
+                                st.warning(f"⚠️ **UPT Bajo ({upt_real:.2f} vs objetivo de {target_upt}):** El usuario debe mejorar la venta cruzada, ofreciendo productos complementarios (como vitaminas, analgésicos o cuidado personal) en cada transacción.")
+                            else:
+                                st.success(f"✅ **UPT Destacado ({upt_real:.2f}):** Excelente colocación de múltiples artículos por cliente.")
                                 
-                                col1, col2, col3, col4 = st.columns(4)
-                                col1.metric("Ventas USD", f"${ventas_real:,.2f}", f"{((ventas_real/meta_cajero_usd)-1)*100:.1f}% vs Meta")
-                                col2.metric("Unidades", f"{int(unidades_real)}", f"{((unidades_real/meta_cajero_unidades)-1)*100:.1f}% vs Meta")
-                                col3.metric("UPT", f"{upt_real:.2f}", f"{upt_real - target_upt:.2f} vs Obj")
-                                col4.metric("Ticket Prom.", f"${ticket_real:.2f}", f"${ticket_real - target_ticket:.2f} vs Obj")
+                            if ticket_real < target_ticket:
+                                st.warning(f"⚠️ **Ticket Promedio Bajo (${ticket_real:.2f} vs objetivo de ${target_ticket:.2f}):** Se recomienda incentivar marcas de mayor valor, combos o presentaciones más grandes para elevar el monto por factura.")
+                            else:
+                                st.success(f"✅ **Ticket Promedio Alto (${ticket_real:.2f}):** Muy buen valor monetario por cada cliente atendido.")
                                 
-                                st.markdown("**💡 Diagnóstico y Recomendaciones:**")
-                                if upt_real < target_upt:
-                                    st.warning(f"⚠️ **UPT Bajo ({upt_real:.2f}):** El usuario debe impulsar con más fuerza la venta cruzada y artículos complementarios en caja.")
-                                else:
-                                    st.success(f"✅ **UPT Destacado ({upt_real:.2f}):** Excelente colocación de múltiples artículos por ticket.")
-                                    
-                                if ticket_real < target_ticket:
-                                    st.warning(f"⚠️ **Ticket Promedio Bajo (${ticket_real:.2f}):** Se sugiere promover marcas de mayor valor o combos en mostrador.")
-                                else:
-                                    st.success(f"✅ **Ticket Promedio Alto (${ticket_real:.2f}):** Muy buen valor monetario por cada transacción.")
-                                    
-                                st.markdown("---")
-                    else:
-                        st.warning("No se pudieron extraer filas de usuarios en la imagen. Verifica que la foto esté nítida.")
-                except Exception as parse_error:
-                    st.error(f"Error interpretando la respuesta de la IA: {parse_error}")
+                            st.markdown("---")
+                else:
+                    st.warning("No se pudieron extraer filas de usuarios en la imagen. Verifica que la foto esté nítida y muestre la tabla completa.")
             else:
-                st.error(f"El servidor de Google sigue ocupado tras varios intentos. Error: {error_msg}")
+                st.error("La IA no devolvió ninguna respuesta. Intenta de nuevo.")
+                
+        except Exception as e:
+            st.error(f"Ocurrió un error al procesar la solicitud: {e}")
