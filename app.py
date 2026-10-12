@@ -96,7 +96,7 @@ if submitted:
         image = Image.open(uploaded_file)
         st.image(image, caption="Reporte de Cierre Nocturno", use_column_width=True)
         
-        with st.spinner("Procesando la tabla de cierre con Gemini..."):
+        with st.spinner("Procesando la tabla de cierre con Gemini (Modelo alternativo de alta disponibilidad)..."):
             try:
                 client = genai.Client(api_key=api_key_final)
                 
@@ -116,8 +116,9 @@ if submitted:
                 ]
                 """
                 
+                # Usando gemini-2.0-flash para evitar saturaciones de alta demanda
                 response = client.models.generate_content(
-                    model='gemini-3.8-flash',
+                    model='gemini-2.0-flash',
                     contents=[image, prompt]
                 )
                 
